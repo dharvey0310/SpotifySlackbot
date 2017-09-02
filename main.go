@@ -77,7 +77,7 @@ func main() {
 			prefix := fmt.Sprintf("<@%s> ", info.User.ID)
 
 			if ev.User != info.User.ID && strings.HasPrefix(ev.Text, prefix) {
-				respond(rtm, ev, prefix, client, playerState)
+				respond(rtm, ev, prefix, client)
 			}
 
 		case *slack.PresenceChangeEvent:
@@ -101,12 +101,15 @@ func main() {
 	}
 }
 
-func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client, playerState *spotify.PlayerState) {
+func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client) {
+	var err error
 	text := msg.Text
 	text = strings.TrimPrefix(text, prefix)
 	text = strings.TrimSpace(text)
 	text = strings.ToLower(text)
-	var err error
+	if ok := strings.HasPrefix(text, "search"); ok {
+		err = search(rtm, text, msg.Channel, client)
+	}
 	switch text {
 	case "play":
 		err = client.Play()
@@ -117,7 +120,7 @@ func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spo
 	case "previous":
 		err = client.Previous()
 	case "now playing":
-		err = nowPlaying(rtm, msg.Channel, playerState)
+		err = nowPlaying(rtm, msg.Channel, client)
 	}
 	if err != nil {
 		log.Print(err)

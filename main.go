@@ -77,7 +77,7 @@ func main() {
 			prefix := fmt.Sprintf("<@%s> ", info.User.ID)
 
 			if ev.User != info.User.ID && strings.HasPrefix(ev.Text, prefix) {
-				respond(rtm, ev, prefix, client)
+				respond(rtm, ev, prefix, client, playerState)
 			}
 
 		case *slack.PresenceChangeEvent:
@@ -101,7 +101,7 @@ func main() {
 	}
 }
 
-func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client) {
+func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client, playerState *spotify.PlayerState) {
 	text := msg.Text
 	text = strings.TrimPrefix(text, prefix)
 	text = strings.TrimSpace(text)
@@ -116,12 +116,12 @@ func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spo
 		err = client.Next()
 	case "previous":
 		err = client.Previous()
+	case "now playing":
+		err = nowPlaying(rtm, msg.Channel, playerState)
 	}
 	if err != nil {
 		log.Print(err)
 	}
-
-	client.Play()
 
 	fmt.Printf("%v", text)
 }

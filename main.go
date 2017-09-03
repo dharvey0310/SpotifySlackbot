@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/nlopes/slack"
@@ -12,24 +13,29 @@ import (
 )
 
 var (
-	auth       = spotify.NewAuthenticator("http://localhost:8080/callback", spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState)
-	ch         = make(chan *spotify.Client)
-	state      = "testapp"
-	slacktoken string
+	auth         = spotify.NewAuthenticator("http://localhost:8080/callback", spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState, spotify.ScopePlaylistModifyPublic)
+	ch           = make(chan *spotify.Client)
+	state        = "testapp"
+	slacktoken   string
+	playlistName string
 )
 
 func init() {
 	slacktoken = os.Getenv("SLACK_TOKEN")
+	playlistName = os.Getenv("SPOTIFY_PLAYLIST")
 }
 
 func main() {
 	var client *spotify.Client
 	var playerState *spotify.PlayerState
+	var userPlaylists *spotify.SimplePlaylistPage
+	var user *spotify.PrivateUser
+	var playlist spotify.SimplePlaylist
 
 	http.HandleFunc("/callback", completeAuth)
 	go http.ListenAndServe(":8080", nil)
 
-	go func() {
+	go func(userPlaylists *spotify.SimplePlaylistPage, user *spotify.PrivateUser) {
 		url := auth.AuthURL(state)
 		fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
 
@@ -47,8 +53,21 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		userPlaylists, err = client.GetPlaylistsForUser(user.ID)
+
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		for _, p := range userPlaylists.Playlists {
+			if p.Name == playlistName {
+				playlist = p
+			}
+		}
+
 		fmt.Printf("Found your %s (%s)\n", playerState.Device.Type, playerState.Device.Name)
-	}()
+	}(userPlaylists, user)
 
 	api := slack.New(slacktoken)
 	//logger := log.New(os.Stdout, "slack", log.Lshortfile|log.LstdFlags)
@@ -64,6 +83,7 @@ func main() {
 		switch ev := msg.Data.(type) {
 		case *slack.HelloEvent:
 			// Ignore hello
+			//fmt.Println("hello")
 
 		case *slack.ConnectedEvent:
 			/*fmt.Println("Infos:", ev.Info)
@@ -77,7 +97,7 @@ func main() {
 			prefix := fmt.Sprintf("<@%s> ", info.User.ID)
 
 			if ev.User != info.User.ID && strings.HasPrefix(ev.Text, prefix) {
-				respond(rtm, ev, prefix, client)
+				respond(rtm, ev, prefix, client, playlist)
 			}
 
 		case *slack.PresenceChangeEvent:
@@ -101,15 +121,34 @@ func main() {
 	}
 }
 
-func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client) {
+func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spotify.Client, playlist spotify.SimplePlaylist) {
 	var err error
 	text := msg.Text
+
 	text = strings.TrimPrefix(text, prefix)
 	text = strings.TrimSpace(text)
-	text = strings.ToLower(text)
 	if ok := strings.HasPrefix(text, "search"); ok {
 		err = search(rtm, text, msg.Channel, client)
 	}
+
+	if strings.HasPrefix(text, "add") {
+		err = addTrackToPlayList(rtm, text, msg.Channel, client, playlist)
+	}
+
+	if ok := strings.HasPrefix(text, "volume"); ok {
+		text = strings.TrimPrefix(text, "volume")
+		text = strings.TrimSpace(text)
+
+		volume, err := strconv.Atoi(text)
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		client.Volume(volume)
+	}
+
+	text = strings.ToLower(text)
 	switch text {
 	case "play":
 		err = client.Play()
@@ -125,8 +164,6 @@ func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spo
 	if err != nil {
 		log.Print(err)
 	}
-
-	fmt.Printf("%v", text)
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {

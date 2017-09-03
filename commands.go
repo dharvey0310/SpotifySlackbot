@@ -9,6 +9,8 @@ import (
 	"github.com/zmb3/spotify"
 )
 
+var results *spotify.SearchResult
+
 func nowPlaying(rtm *slack.RTM, channel string, client *spotify.Client) error {
 	postMsgParams := slack.NewPostMessageParameters()
 	postMsgParams.AsUser = true
@@ -82,10 +84,50 @@ func search(rtm *slack.RTM, text, channel string, client *spotify.Client) error 
 	// Range over the results, append them to the results message and send a slack message to display these
 	var resultsMsg string
 	for _, result := range results.Tracks.Tracks {
-		resultsMsg = fmt.Sprintf("%s\nTrack Title: %s\nArtist: %s\nAlbum: %s\n", resultsMsg, result.Name, result.Artists[0].Name, result.Album.Name)
+		/*postParams.Attachments = []slack.Attachment{
+			{Actions: []slack.AttachmentAction{
+				{Name: "Add",
+					Text: "Add",
+					Type: "select",
+					Options: []slack.AttachmentActionOption{
+						{Text: "Song Text",
+							Value: "Song Value"},
+					}},
+			}},
+		}*/
+		resultsMsg = fmt.Sprintf("%s\nTrack Title: %s\nArtist: %s\nAlbum: %s\nTrackID: %s\n", resultsMsg, result.Name, result.Artists[0].Name, result.Album.Name, result.ID)
 	}
 
 	_, _, err = rtm.PostMessage(channel, resultsMsg, postParams)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func addTrackToPlayList(rtm *slack.RTM, text, channel string, client *spotify.Client, playlist spotify.SimplePlaylist) error {
+	text = strings.TrimPrefix(text, "add")
+	text = strings.TrimSpace(text)
+
+	postParams := slack.NewPostMessageParameters()
+	postParams.AsUser = true
+
+	id := spotify.ID(text)
+
+	user, err := client.CurrentUser()
+
+	_, err = client.AddTracksToPlaylist(user.ID, playlist.ID, id)
+
+	if err != nil {
+		return err
+	}
+
+	var addedMsg string
+
+	addedMsg = "Song successfully added"
+
+	_, _, err = rtm.PostMessage(channel, addedMsg, postParams)
 	if err != nil {
 		return err
 	}

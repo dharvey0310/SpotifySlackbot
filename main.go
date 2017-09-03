@@ -69,7 +69,6 @@ func main() {
 		}
 
 		fmt.Printf("Found your %s (%s)\n", playerState.Device.Type, playerState.Device.Name)
-		fmt.Printf("\nPlaylist Name: %s\nPlaylist ID: %v", playlist.Name, playlist.ID)
 	}(userPlaylists, user)
 
 	api := slack.New(slacktoken)

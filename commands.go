@@ -187,7 +187,8 @@ func addToBannedList(rtm *slack.RTM, text, channel, slackUserID string, client *
 
 	for _, track := range playlistTracks.Tracks {
 		for _, art := range track.Track.Artists {
-			if strings.Contains(art.Name, artist) {
+			artistName := strings.ToLower(art.Name)
+			if strings.Contains(artistName, artist) {
 				_, err = client.RemoveTracksFromPlaylist(spotifyUser.ID, playlist.ID, track.Track.ID)
 				if err != nil {
 					rtm.PostMessage(channel, fmt.Sprintf("Unable to remove tracks by artist: %s from the playlist.", artist), postParams)

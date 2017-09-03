@@ -117,6 +117,27 @@ func addTrackToPlayList(rtm *slack.RTM, text, channel string, client *spotify.Cl
 
 	user, err := client.CurrentUser()
 
+	// Get the track details and use this to get the artists
+	trackDetails, err := client.GetTrack(id)
+	if err != nil {
+		rtm.PostMessage(channel, fmt.Sprintf("Unable to get track details for TrackID: %s", id), postParams)
+		return err
+	}
+	artists := trackDetails.Artists
+
+	// Check if any of the artists are on the banned list
+	// return a message to advise if this is true
+	for _, bannedArtist := range bannedArtists {
+		for _, artist := range artists {
+			artistName := strings.ToLower(artist.Name)
+			if strings.Contains(artistName, bannedArtist) {
+				bannedMsg := fmt.Sprintf("Can not add trackID %s to the playlist as artist %s is on the banned list", id, artistName)
+				rtm.PostMessage(channel, bannedMsg, postParams)
+				return nil
+			}
+		}
+	}
+
 	_, err = client.AddTracksToPlaylist(user.ID, playlist.ID, id)
 
 	if err != nil {
@@ -130,6 +151,64 @@ func addTrackToPlayList(rtm *slack.RTM, text, channel string, client *spotify.Cl
 	_, _, err = rtm.PostMessage(channel, addedMsg, postParams)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func addToBannedList(rtm *slack.RTM, text, channel, slackUserID string, client *spotify.Client, playlist spotify.SimplePlaylist) error {
+	var currentlyBanned string
+	postParams := slack.NewPostMessageParameters()
+	postParams.AsUser = true
+
+	artist := strings.TrimPrefix(text, "ban")
+	artist = strings.TrimSpace(artist)
+	artist = strings.ToLower(artist)
+
+	// Get the current spotify users details
+	spotifyUser, err := client.CurrentUser()
+	if err != nil {
+		rtm.PostMessage(channel, "Unable to get spotify user details", postParams)
+		return err
+	}
+
+	// Get the currently banned artist for this slack user and update
+	// the banned artists list with the new artist
+	if _, ok := bannedArtists[slackUserID]; ok {
+		currentlyBanned = bannedArtists[slackUserID]
+	}
+	bannedArtists[slackUserID] = artist
+
+	playlistTracks, err := client.GetPlaylistTracks(spotifyUser.ID, playlist.ID)
+	if err != nil {
+		rtm.PostMessage(channel, fmt.Sprintf("Unable to remove tracks by artist: %s from the playlist.", artist), postParams)
+		return err
+	}
+
+	for _, track := range playlistTracks.Tracks {
+		for _, art := range track.Track.Artists {
+			if strings.Contains(art.Name, artist) {
+				_, err = client.RemoveTracksFromPlaylist(spotifyUser.ID, playlist.ID, track.Track.ID)
+				if err != nil {
+					rtm.PostMessage(channel, fmt.Sprintf("Unable to remove tracks by artist: %s from the playlist.", artist), postParams)
+					return err
+				}
+			}
+		}
+	}
+
+	if currentlyBanned != "" {
+		returnMsg := fmt.Sprintf("Artist %s added to banned list to overwrite artist %s and all tracks removed from playlist", artist, currentlyBanned)
+		_, _, err = rtm.PostMessage(channel, returnMsg, postParams)
+		if err != nil {
+			return err
+		}
+	} else {
+		returnMsg := fmt.Sprintf("Artist %s added to banned list and all tracks removed from playlist", artist)
+		_, _, err = rtm.PostMessage(channel, returnMsg, postParams)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

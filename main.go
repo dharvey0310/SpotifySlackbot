@@ -13,11 +13,12 @@ import (
 )
 
 var (
-	auth         = spotify.NewAuthenticator("http://localhost:8080/callback", spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState, spotify.ScopePlaylistModifyPublic)
-	ch           = make(chan *spotify.Client)
-	state        = "testapp"
-	slacktoken   string
-	playlistName string
+	auth          = spotify.NewAuthenticator("http://localhost:8080/callback", spotify.ScopeUserReadCurrentlyPlaying, spotify.ScopeUserReadPlaybackState, spotify.ScopeUserModifyPlaybackState, spotify.ScopePlaylistModifyPublic)
+	ch            = make(chan *spotify.Client)
+	state         = "testslackbot"
+	slacktoken    string
+	playlistName  string
+	bannedArtists map[string]string
 )
 
 func init() {
@@ -31,6 +32,7 @@ func main() {
 	var userPlaylists *spotify.SimplePlaylistPage
 	var user *spotify.PrivateUser
 	var playlist spotify.SimplePlaylist
+	bannedArtists = make(map[string]string)
 
 	http.HandleFunc("/callback", completeAuth)
 	go http.ListenAndServe(":8080", nil)
@@ -67,6 +69,7 @@ func main() {
 		}
 
 		fmt.Printf("Found your %s (%s)\n", playerState.Device.Type, playerState.Device.Name)
+		fmt.Printf("\nPlaylist Name: %s\nPlaylist ID: %v", playlist.Name, playlist.ID)
 	}(userPlaylists, user)
 
 	api := slack.New(slacktoken)
@@ -146,6 +149,10 @@ func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spo
 		}
 
 		client.Volume(volume)
+	}
+
+	if ok := strings.HasPrefix(text, "ban"); ok {
+		err = addToBannedList(rtm, text, msg.Channel, msg.User, client, playlist)
 	}
 
 	text = strings.ToLower(text)

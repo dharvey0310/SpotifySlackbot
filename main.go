@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/nlopes/slack"
@@ -132,6 +133,19 @@ func respond(rtm *slack.RTM, msg *slack.MessageEvent, prefix string, client *spo
 
 	if strings.HasPrefix(text, "add") {
 		err = addTrackToPlayList(rtm, text, msg.Channel, client, playlist)
+	}
+
+	if ok := strings.HasPrefix(text, "volume"); ok {
+		text = strings.TrimPrefix(text, "volume")
+		text = strings.TrimSpace(text)
+
+		volume, err := strconv.Atoi(text)
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		client.Volume(volume)
 	}
 
 	text = strings.ToLower(text)
